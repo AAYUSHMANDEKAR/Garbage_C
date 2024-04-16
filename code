@@ -1,0 +1,493 @@
+#include<stdio.h>
+#include<stdbool.h>
+#include<stdlib.h>
+
+#define HEAP_SIZE 1000
+
+typedef struct Node_tag
+{
+    int data;
+    bool mark;//for marking the nodes to use mark and sweep method
+    int referenceCount;//reference count method
+    struct Node_tag *next_1;
+    struct Node_tag *next_2;
+    struct Node_tag *next_3;
+}Node;
+
+typedef struct metadata_tag {
+    int size;
+    int free;
+    struct metadata_tag* next;
+} metadata;
+
+char heap[HEAP_SIZE];
+
+metadata* freelist = (void*)heap;
+
+void Initialize() 
+{
+    freelist->size = HEAP_SIZE - sizeof(metadata);
+    freelist->free = 1;
+    freelist->next = NULL;
+    //printf("Heap Initialised\n");
+}
+
+void* split(metadata* ptr, int size) 
+{
+    metadata* new_block = (void*)((void*)ptr + sizeof(metadata) + size);
+    new_block->size = ptr->size - size - sizeof(metadata);
+    new_block->free = 1;
+    new_block->next = ptr->next;
+    ptr->next = new_block;
+    //printf("New block created from %d to %d\n", (void*)new_block + sizeof(metadata), (void*)new_block + sizeof(metadata) + new_block->size);
+    return new_block;
+}
+
+void* allocate(int size) 
+{
+    metadata* prev, * ptr;
+    ptr = freelist;
+    prev = NULL;
+    while (ptr != NULL && (ptr->size < size  || !ptr->free)) 
+    {
+        prev = ptr;
+        ptr = ptr->next;
+    }
+    if(ptr != NULL) 
+    {
+        if (ptr->size - size > sizeof(metadata)) 
+        {
+            metadata* new_block = split(ptr, size);
+            ptr->size = size;
+        }
+        else 
+        {
+            printf("No block splitting\n");
+        }
+        ptr->free = 0;
+        if (prev != NULL) 
+        {
+            prev->next = ptr->next;
+        }
+        else 
+        {
+            printf("Allocation at the beginning\n");
+            freelist = freelist->next;
+        }
+        printf("Memory allocated from %p to %p\n", (void*)ptr + sizeof(metadata), (void*)ptr + sizeof(metadata) + size);
+        ptr->next = NULL;
+        return (void*)ptr + sizeof(metadata);
+    }
+    else 
+    {
+        printf("Heap filled\n");
+        return NULL;
+    }
+}
+
+metadata* merge(metadata* a1, metadata* a2) {
+    a1->next = a2->next;
+    printf("Blocks of sizes %d %d are merged\n", a1->size, a2->size);
+    a1->size = sizeof(metadata) + a1->size + a2->size;
+    return a1;
+}
+
+void Free(void* a) 
+{
+    metadata* ptr, * prev, * del;
+    if (a != NULL) 
+    {
+        del = (void*)a - sizeof(metadata);
+        ptr = freelist;
+        prev = NULL;
+        del->free = 1;
+        if(freelist == NULL)
+        {
+            freelist = del;
+            printf("Free when freelist became NULL\n");
+        }
+        else if (del < freelist) {
+            // Merging with the block at the beginning
+            del->next = freelist;
+            if ((void*)del + sizeof(metadata) + del->size == freelist) {
+                del = merge(del, freelist);
+            }
+            freelist = del;
+        } 
+        else {
+            while (ptr != NULL && ptr < del) 
+            {
+                prev = ptr;
+                ptr = ptr->next;
+            }
+            if (prev != NULL) 
+            {
+                prev->next = del;
+                if ((void*)prev + sizeof(metadata) + prev->size == del) {
+                    del = merge(prev, del);
+                }
+            }
+            del->next = ptr;
+            if (ptr != NULL) 
+            {
+                // Check if merged block can further merge with the next block
+                if ((void*)del + sizeof(metadata) + del->size == ptr) {
+                    del = merge(del, ptr);
+                }
+            }
+        }
+    }
+}
+
+
+void printHeap()
+{
+    metadata * ptr;
+    ptr = freelist;
+    int i = 0;
+    while(ptr != NULL)
+    {
+        printf("Sizes of free block number %d is -> %d\n",i,ptr->size);
+        ptr = ptr->next;
+        i++;
+    }
+}
+
+Node *Data[8];
+
+void print_node(int i)
+{
+	printf("value=%d\t reference_count=%d freed_size=%lu\n",Data[i]->data,Data[i]->referenceCount,sizeof(Node));
+}
+
+void Edge_set(int source,int destination1,int destination2,int destination3)
+{
+    if(source != -1)
+    {
+        if(destination1 != -1)
+        {
+            Data[source]->next_1 = Data[destination1];
+            Data[destination1]->referenceCount++;
+        }
+        if(destination2 != -1)
+        {
+            Data[source]->next_2 = Data[destination2];
+            Data[destination2]->referenceCount++;
+
+        }
+        if(destination3 != -1)
+        {
+            Data[source]->next_3 = Data[destination3];
+            Data[destination3]->referenceCount++;
+        }
+    }
+}
+
+void print_allNodes(Node* root)
+{
+	if(root!=NULL)
+	{
+		printf("Data = %d:referenceCount = %d\n",root->data,root->referenceCount);
+	}
+	if(root==NULL)
+	{
+		return;
+	}
+	print_allNodes(root->next_1);
+	print_allNodes(root->next_2);
+	print_allNodes(root->next_3);
+}
+
+void Print_Adjacenecy_list()
+{
+    for(int i = 0 ; i < 8; i++)
+    {
+        if(Data[i] != NULL)
+        {
+            printf("Data(%d): ",Data[i]->data);
+            if(Data[i]->next_1 != NULL)
+            {
+                printf("%d -> ",Data[i]->next_1->data);
+            }
+            if(Data[i]->next_2 != NULL)
+            {
+                printf("%d -> ",Data[i]->next_2->data);
+            }
+            if(Data[i]->next_3 != NULL)
+            {
+                printf("%d -> ",Data[i]->next_3->data);
+            }
+            printf("NULL\n");
+        }
+    }
+}
+
+int is_linked(Node* root_1,Node* temp)
+{
+	if(root_1==NULL)
+	{
+		return 0;
+	}
+	if(root_1->data==temp->data)
+	{
+		return 1;
+	}
+	
+	if(is_linked(root_1->next_1,temp)) 
+	{
+		return 1;
+	}
+	
+	if(is_linked(root_1->next_2,temp))
+	{
+		return 1;
+	}
+	if(is_linked(root_1->next_3,temp))
+	{
+		return 1;
+	}
+ return 0;
+}
+
+void reference_counting(Node* root)
+{
+	int i=0;
+	while(i<8)
+	{
+		if(is_linked(root,Data[i])==0 )
+		{		
+			if(Data[i]->next_1!=NULL)
+			{
+				Data[i]->next_1->referenceCount-=1;
+			}
+			if(Data[i]->next_2!=NULL)
+			{
+				Data[i]->next_2->referenceCount-=1;
+			}
+			if(Data[i]->next_3!=NULL)
+			{
+				Data[i]->next_3->referenceCount-=1;
+			}
+			printf("Garbage:");
+			print_node(i);
+			Free(Data[i]);
+			Data[i]=NULL;
+		}
+		 i++;		
+	}
+	 
+}
+
+void adjacency_Matrix()
+{
+	int adm[8][8];
+	int i,j,k;
+	
+	for(i=0;i<8;i++)		//initialising all indices values to 0
+	{
+		for(j=0;j<8;j++)
+		{
+			adm[i][j]=0;
+		}	
+	}
+	
+	for(i=0;i<8;i++)
+	{
+		for(j=0;j<8;j++)
+		{
+			
+		if(Data[j]!=NULL&&Data[i]!=NULL)
+		{
+			
+			if(Data[i]->next_1!=NULL)
+			{
+				if(Data[i]->next_1->data==Data[j]->data&&i!=j)
+				{
+					adm[i][j]=1;
+				}
+			}
+			if(Data[i]->next_2!=NULL)
+			{
+				if(Data[i]->next_2->data==Data[j]->data&&i!=j)
+				{
+					adm[i][j]=1;
+				}
+			}
+			if(Data[i]->next_3!=NULL)
+			{
+				if(Data[i]->next_3->data==Data[j]->data&&i!=j)
+				{
+					adm[i][j]=1;
+				}
+			}
+		}
+		
+		}
+	}
+	
+	for(i=0;i<8;i++)
+	{
+		for(j=0;j<8;j++)
+		{
+			printf("%d ",adm[i][j]);		//printing the adjacency matrix
+		}
+		printf("\n");
+	}
+}
+
+void mark_method(Node*root)
+{
+    Node *current, *pre;
+    current = root;
+        
+    while (current != NULL) 
+    {
+  
+        if (current->next_1== NULL) 
+        {
+            current->mark=true;
+            current = current->next_2;
+        }   
+        else 
+        {
+            pre = current->next_1;
+            while ((pre->next_2 != NULL) && (pre->next_2 != current))
+            {
+            	pre = pre->next_2;
+			}
+                
+            if (pre->next_2 == NULL) 
+            {
+                pre->next_2 = current;
+                current = current->next_1;
+            }
+            else 
+            {
+                pre->next_2 = NULL;
+                current->mark=true;
+                current = current->next_2;
+            } 
+        }
+    }   
+    
+    current = root;
+        
+    while (current != NULL) 
+    {
+  
+        if (current->next_1== NULL) 
+        {
+            current->mark=true;
+            current = current->next_3;
+        }   
+        else 
+        {
+            pre = current->next_1;
+            while ((pre->next_3 != NULL) && (pre->next_3 != current))
+            {
+            	pre = pre->next_3;
+			}
+                
+            if (pre->next_3 == NULL) 
+            {
+                pre->next_3 = current;
+                current = current->next_1;
+            }
+            else 
+            {
+                pre->next_3 = NULL;
+                current->mark=true;
+                current = current->next_3;
+            } 
+        }
+    }  
+    
+}
+
+void sweep_method()
+{
+	int i;
+	for(i=0;i<8;i++)
+	{
+		if(Data[i]->mark==false)
+		{
+			if(Data[i]->next_1!=NULL)
+			{
+				Data[i]->next_1->referenceCount-=1;
+			}
+			if(Data[i]->next_2!=NULL)
+			{
+				Data[i]->next_2->referenceCount-=1;
+			}
+			if(Data[i]->next_3!=NULL)
+			{
+				Data[i]->next_3->referenceCount-=1;
+			}
+			printf("Garbage:");
+			print_node(i);
+			Free(Data[i]);
+			Data[i]=NULL;
+		}
+	}
+}
+
+int main() 
+{
+    Initialize();
+    int val[]={1,2,3,5,7,8,9,10};
+	int i;
+    printHeap();
+
+	for(i=0;i<8;i++)
+	{
+		//Node* new_node =(Node*)malloc(sizeof(Node));
+		Node* new_node = allocate(sizeof(Node));
+		new_node->data=val[i];
+		new_node->next_1=NULL;
+		new_node->next_2=NULL;
+		new_node->next_3=NULL;
+		new_node->referenceCount=0;
+		new_node->mark=false;		
+		Data[i]=new_node;
+        printHeap();
+	}
+	
+	Node*root_1=Data[3];
+	Data[3]->referenceCount+=1;
+	Node*root_2=Data[0];
+	Data[0]->referenceCount+=1;
+	
+	Edge_set(0,1,6,7);
+	Edge_set(2,5,7,-1);
+	Edge_set(3,0,-1,-1);
+	Edge_set(4,0,5,-1);
+	Edge_set(5,6,-1,-1);
+	
+	printf("\nAll nodes through Root-1:\n");
+	print_allNodes(root_1);
+		
+	printf("\nAll nodes through Root-2:\n");
+	print_allNodes(root_2);
+
+    //Displaying Adjacency list of the nodes with corresponding value or vertex
+	printf("\n\nAdjacency list :\n");
+	Print_Adjacenecy_list();
+
+    //Displaying Adjacency Matrix of the nodes	
+	printf("\n\nAdjacency matrix:\n");
+	adjacency_Matrix();
+
+    printf("\nCalling the mark and sweep garbage collector\n");
+	mark_method(root_1);
+	sweep_method();
+
+    // printf("\nCalling reference counting method\n");
+    // reference_counting(root_1);
+	printf("\n\nAdjacency list after removal of garbage:\n");
+	Print_Adjacenecy_list();
+	
+	printf("\n\nAdjacency matrix after removal of garbage:\n");
+	adjacency_Matrix();
+    return 0;
+}
+
